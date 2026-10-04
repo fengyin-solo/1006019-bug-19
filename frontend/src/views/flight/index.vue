@@ -46,8 +46,12 @@
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
           <td>{{ row.status }}</td>
           <td class="row-actions">
+            <template v-if="String(row.status) === '已终止'">
+              <span class="action-locked">任务已终止，不可操作</span>
+            </template>
             <button
               v-for="action in actions"
+              v-else
               :key="action"
               class="link"
               type="button"
@@ -85,7 +89,17 @@ const meta = moduleMeta('flight')
 const columns = ["保障编号", "航班号", "机型", "计划到达", "机位号", "保障等级", "保障班组", "保障状态"]
 const actions = ["接收任务", "开始保障", "确认完成"]
 const statuses = ["待接收", "保障中", "保障完成", "已终止"]
-const stats = [{"label": "今日保障任务", "value": 0}, {"label": "保障中任务", "value": 0}, {"label": "保障完成率", "value": 0}]
+const stats = computed(() => {
+  const total = rows.value.length
+  const inProgress = rows.value.filter((row) => String(row.status) === '保障中').length
+  const finished = rows.value.filter((row) => String(row.status) === '保障完成').length
+  const rate = total > 0 ? `${Math.round((finished / total) * 100)}%` : '0%'
+  return [
+    { label: "今日保障任务", value: total },
+    { label: "保障中任务", value: inProgress },
+    { label: "保障完成率", value: rate },
+  ]
+})
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)

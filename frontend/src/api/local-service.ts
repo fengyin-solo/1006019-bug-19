@@ -1,5 +1,10 @@
 import { MODULE_BY_KEY } from '@/data/modules'
-import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { allRows, listRows, resetRows, saveAllRows, saveRows } from '@/data/local-store'
+import {
+  STAND_FREE_STATUS,
+  applyFlightCompletion,
+  isPendingRow,
+} from '@/data/reconcile'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -40,16 +45,53 @@ export function runAction(key: string, id: number, action: string): ActionResult
     return { ok: false, message: `没有找到编号为 ${id} 的${meta.entity}` }
   }
   const current = String(rows[index].status)
+  // 终态守卫：已终止的航班任务不能再回到任何状态（含保障完成）。
+  if (key === 'flight' && current === '已终止') {
+    return { ok: false, message: '任务已终止，终态不可回退，不能再执行该操作' }
+  }
   if (current === target) {
     return { ok: false, message: `${meta.entity}已经是「${target}」，不用重复操作` }
   }
-  const lastStatus = meta.statuses[meta.statuses.length - 1]
+
+  // 航班「确认完成」：一次写入同时收口台账、机位占用、班组占用与待处理汇总，
+  // 冲突时整笔退回，避免只写一个入口。
+  if (key === 'flight' && action === '确认完成') {
+    const outcome = applyFlightCompletion(allRows(), id)
+    if (!outcome.ok) {
+      return { ok: false, message: outcome.message }
+    }
+    saveAllRows(outcome.rows)
+    if (outcome.idempotent) {
+      return { ok: true, message: '该航班此前已确认完成，占用与汇总只入账一次，未重复扣减' }
+    }
+    const details: string[] = []
+    if (outcome.releasedStandNos.length > 0) {
+      details.push(`释放机位 ${outcome.releasedStandNos.join('、')}`)
+    }
+    if (outcome.releasedTeamNos.length > 0) {
+      details.push(`释放班组占用 ${outcome.releasedTeamNos.join('、')}`)
+    }
+    return {
+      ok: true,
+      message: `航班保障已确认完成，当前状态「${target}」；待处理已减账${
+        details.length > 0 ? `，${details.join('，')}` : ''
+      }`,
+    }
+  }
+
   const updated: EntryRow = {
     ...rows[index],
     status: target,
-    pending: target !== lastStatus,
+    pending: isPendingRow(key, { ...rows[index], status: target }),
     abnormal: NEGATIVE_ACTIONS.some((verb) => action.startsWith(verb)),
   }
+
+  // 机位「释放机位」：同步清空当前航班标识，机位页读到的当前航班只能来自台账，
+  // 不能留一套机位页自己的旧值。
+  if (key === 'stand' && target === STAND_FREE_STATUS) {
+    updated['当前航班'] = ''
+  }
+
   const next = [...rows]
   next[index] = updated
   saveRows(key, next)
@@ -88,10 +130,14 @@ export function loadOverview(): OverviewResult {
   const rows = allRows()
   const modules = [...MODULE_BY_KEY.values()].map((meta) => {
     const entries = rows[meta.key] ?? []
+    // 待处理统一由业务状态推导（isPendingRow），存储里的 pending 只是缓存；
+    // 汇总不读各页面重算结果，避免两个入口算出两套数。
+    const pending = entries.reduce((count, row) => count + (isPendingRow(meta.key, row) ? 1 : 0), 0)
     return {
       name: meta.name,
       created: entries.length,
-      pending: entries.filter((row) => row.pending).length,
+      // 双保险：任何情况下待处理都不允许被减成负数。
+      pending: Math.max(0, pending),
       abnormal: entries.filter((row) => row.abnormal).length,
     }
   })
