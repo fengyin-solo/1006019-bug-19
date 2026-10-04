@@ -38,6 +38,8 @@
 import { onMounted, ref } from 'vue'
 
 import { loadOverview } from '@/api/local-service'
+import { useDataSync } from '@/composables/useDataSync'
+import { ALL_KEYS } from '@/data/events'
 import type { OverviewResult } from '@/data/types'
 
 const cards = ref<OverviewResult['cards']>([])
@@ -50,4 +52,6 @@ function refresh() {
 }
 
 onMounted(refresh)
+// 任意模块落账（含确认完成联动改三表）后，待处理等汇总立即重算，不再等手工点刷新。
+useDataSync(refresh, [ALL_KEYS])
 </script>

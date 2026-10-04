@@ -79,6 +79,8 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { useDataSync } from '@/composables/useDataSync'
+import { FLIGHT_KEY } from '@/data/reconcile'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('team')
@@ -134,4 +136,6 @@ function reload() {
 }
 
 onMounted(reload)
+// 航班保障完成联动释放班组占用待办：班组页挂着时同步刷新。
+useDataSync(reload, [meta.key, FLIGHT_KEY])
 </script>

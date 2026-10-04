@@ -68,4 +68,14 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 跨页联动（如航班保障「确认完成」要同时释放机位、班组占用并修正待处理）统一收口在
+  本地数据层：`data/reconcile.ts` 放对账原语，`local-store.ts` 的 `saveTables` 是
+  pending/占用派生位的唯一提交入口（多表一次原子写入），`data/events.ts` 的变更总线
+  负责通知打开中的其他页面即时刷新。
+  - 机位释放必须对牌：机位表「当前航班」必须等于航班表「航班号」，账实不符时整笔完成
+    回滚、任务保持「保障中」（机位是排他硬资源，宁可重试也不许假完成）。
+  - 班组占用待办与各模块 pending 都从明细行派生，没有独立汇总账本；冲突时以明细为准。
+  - 存量 localStorage 数据每次加载时由 `reconcileTables` 幂等回填：已完成漏释放的
+    按「计划到达」升序补账、重复编号去重、已终止任务保持终态。
 - 想回到初始数据：清掉浏览器里 `airport-ground-ops:entries` 这一项，或调用 `resetModule(模块)`。
+- 数据层联动的本地验收：`cd frontend && npm run verify`（纯 Node 脚本，不启浏览器）。

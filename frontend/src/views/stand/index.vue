@@ -79,6 +79,8 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { useDataSync } from '@/composables/useDataSync'
+import { FLIGHT_KEY } from '@/data/reconcile'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('stand')
@@ -134,4 +136,6 @@ function reload() {
 }
 
 onMounted(reload)
+// 航班保障页确认完成会联动释放机位：机位页挂着时也要立刻看到最新占用与当前航班。
+useDataSync(reload, [meta.key, FLIGHT_KEY])
 </script>
